@@ -1,0 +1,13 @@
+{
+  "name": "ai-exam-showcase",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI 智能在线考试平台 - Vercel Showcase Demo",
+  "scripts": {
+    "postinstall": "node install-deps.js",
+    "build": "node build-demo.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

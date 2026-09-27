@@ -1,0 +1,16 @@
+# 后端构建上下文忽略项（加速上下文传输，避免缓存失效）
+.git
+.venv
+.vscode
+**/node_modules
+source/vue
+tests
+docs
+k8s
+log
+release
+EMS.sql
+*.log
+hs_err_pid*.log
+TestDB.java
+test_qiniu_api.*

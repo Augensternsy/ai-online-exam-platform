@@ -1,0 +1,56 @@
+# ===== Maven / Java =====
+*.war
+*.zip
+*.tar
+*.tar.gz
+*.class
+target/
+
+# IntelliJ IDEA 编译输出目录
+source/xzs/output/
+
+# 发布产物（jar / 前端构建 / 日志，100MB+，不入库）
+release/
+
+# eclipse ignore
+.settings/
+.project
+.classpath
+
+# idea ignore
+.idea/
+*.ipr
+*.iml
+*.iws
+
+# ===== Node / Vue =====
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+# 仅忽略名为 .env 的文件，.env.demo / .env.dev 等模式文件允许提交
+.env
+
+# ===== Python =====
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# ===== temp / logs =====
+logs/
+log/
+*.doc
+*.log
+*.cache
+*.diff
+*.patch
+*.tmp
+
+# 临时测试脚本（下划线开头）
+_*
+
+# ===== system =====
+.DS_Store
+Thumbs.db

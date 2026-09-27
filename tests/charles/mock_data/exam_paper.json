@@ -1,0 +1,51 @@
+{
+  "code": 1,
+  "msg": "success",
+  "data": {
+    "examId": 1,
+    "examName": "2024年期末考试 - 计算机科学",
+    "duration": 120,
+    "totalScore": 100,
+    "passScore": 60,
+    "questions": [
+      {
+        "questionId": 1,
+        "type": "single_choice",
+        "title": "以下哪个不是操作系统？",
+        "options": ["Windows", "Linux", "MySQL", "macOS"],
+        "answer": "C",
+        "score": 5
+      },
+      {
+        "questionId": 2,
+        "type": "single_choice",
+        "title": "HTTP 协议默认端口号是多少？",
+        "options": ["21", "80", "443", "8080"],
+        "answer": "B",
+        "score": 5
+      },
+      {
+        "questionId": 3,
+        "type": "multiple_choice",
+        "title": "以下哪些是关系型数据库？",
+        "options": ["MySQL", "MongoDB", "PostgreSQL", "Redis"],
+        "answer": ["A", "C"],
+        "score": 10
+      },
+      {
+        "questionId": 4,
+        "type": "true_false",
+        "title": "Python 是一种编译型语言。",
+        "answer": false,
+        "score": 5
+      },
+      {
+        "questionId": 5,
+        "type": "fill_blank",
+        "title": "TCP/IP 协议栈分为____层。",
+        "answer": "4",
+        "score": 5
+      }
+    ]
+  }
+}

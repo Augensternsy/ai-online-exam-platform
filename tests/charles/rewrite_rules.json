@@ -1,0 +1,44 @@
+{
+  "rewrite_rules": [
+    {
+      "name": "交卷接口 500 错误",
+      "enabled": true,
+      "location": "Host",
+      "match": "localhost:8080",
+      "where": "Response Status",
+      "match_value": "200",
+      "replace_value": "500",
+      "description": "模拟后端服务器崩溃"
+    },
+    {
+      "name": "监控接口 504 超时",
+      "enabled": true,
+      "location": "Path",
+      "match": "/api/exam/monitor",
+      "where": "Response Status",
+      "match_value": "200",
+      "replace_value": "504",
+      "description": "模拟监控接口超时"
+    },
+    {
+      "name": "人脸检测接口 502 错误",
+      "enabled": true,
+      "location": "Path",
+      "match": "/api/exam/face-detect",
+      "where": "Response Status",
+      "match_value": "200",
+      "replace_value": "502",
+      "description": "模拟网关错误"
+    },
+    {
+      "name": "违纪日志接口 503 错误",
+      "enabled": true,
+      "location": "Path",
+      "match": "/api/exam/violation",
+      "where": "Response Status",
+      "match_value": "200",
+      "replace_value": "503",
+      "description": "模拟服务不可用"
+    }
+  ]
+}

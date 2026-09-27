@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mindskip.xzs.repository.ExamViolationLogMapper">
+  <resultMap id="BaseResultMap" type="com.mindskip.xzs.domain.ExamViolationLog">
+    <id column="id" jdbcType="INTEGER" property="id" />
+    <result column="user_id" jdbcType="INTEGER" property="userId" />
+    <result column="user_name" jdbcType="VARCHAR" property="userName" />
+    <result column="exam_paper_id" jdbcType="INTEGER" property="examPaperId" />
+    <result column="exam_paper_name" jdbcType="VARCHAR" property="examPaperName" />
+    <result column="violation_type" jdbcType="VARCHAR" property="violationType" />
+    <result column="violation_detail" jdbcType="VARCHAR" property="violationDetail" />
+    <result column="violation_count" jdbcType="INTEGER" property="violationCount" />
+    <result column="violation_time" jdbcType="TIMESTAMP" property="violationTime" />
+    <result column="is_handled" jdbcType="BIT" property="isHandled" />
+    <result column="handle_result" jdbcType="VARCHAR" property="handleResult" />
+    <result column="handle_time" jdbcType="TIMESTAMP" property="handleTime" />
+  </resultMap>
+
+  <sql id="Base_Column_List">
+    id, user_id, user_name, exam_paper_id, exam_paper_name, violation_type, violation_detail,
+    violation_count, violation_time, is_handled, handle_result, handle_time
+  </sql>
+
+  <select id="page" resultMap="BaseResultMap">
+    SELECT
+    <include refid="Base_Column_List" />
+    FROM t_exam_violation_log
+    <where>
+      <if test="userId != null">
+        AND user_id = #{userId}
+      </if>
+      <if test="examPaperId != null">
+        AND exam_paper_id = #{examPaperId}
+      </if>
+    </where>
+    ORDER BY violation_time DESC
+  </select>
+
+  <select id="pageCount" resultType="java.lang.Integer">
+    SELECT COUNT(*)
+    FROM t_exam_violation_log
+    <where>
+      <if test="userId != null">
+        AND user_id = #{userId}
+      </if>
+      <if test="examPaperId != null">
+        AND exam_paper_id = #{examPaperId}
+      </if>
+    </where>
+  </select>
+
+  <select id="getViolationLogsByExamPaperId" resultMap="BaseResultMap">
+    SELECT
+    <include refid="Base_Column_List" />
+    FROM t_exam_violation_log
+    WHERE exam_paper_id = #{examPaperId}
+    ORDER BY violation_time DESC
+  </select>
+
+  <select id="getViolationCountByUserIdAndExamPaperId" resultType="java.lang.Integer">
+    SELECT COUNT(*)
+    FROM t_exam_violation_log
+    WHERE user_id = #{userId} AND exam_paper_id = #{examPaperId}
+  </select>
+
+  <insert id="insert" parameterType="com.mindskip.xzs.domain.ExamViolationLog" useGeneratedKeys="true" keyProperty="id">
+    INSERT INTO t_exam_violation_log (
+      user_id, user_name, exam_paper_id, exam_paper_name, violation_type,
+      violation_detail, violation_count, violation_time, is_handled
+    ) VALUES (
+      #{userId}, #{userName}, #{examPaperId}, #{examPaperName}, #{violationType},
+      #{violationDetail}, #{violationCount}, #{violationTime}, #{isHandled}
+    )
+  </insert>
+
+  <update id="updateByPrimaryKey" parameterType="com.mindskip.xzs.domain.ExamViolationLog">
+    UPDATE t_exam_violation_log
+    <set>
+      <if test="userId != null">user_id = #{userId},</if>
+      <if test="userName != null">user_name = #{userName},</if>
+      <if test="examPaperId != null">exam_paper_id = #{examPaperId},</if>
+      <if test="examPaperName != null">exam_paper_name = #{examPaperName},</if>
+      <if test="violationType != null">violation_type = #{violationType},</if>
+      <if test="violationDetail != null">violation_detail = #{violationDetail},</if>
+      <if test="violationCount != null">violation_count = #{violationCount},</if>
+      <if test="violationTime != null">violation_time = #{violationTime},</if>
+      <if test="isHandled != null">is_handled = #{isHandled},</if>
+      <if test="handleResult != null">handle_result = #{handleResult},</if>
+      <if test="handleTime != null">handle_time = #{handleTime},</if>
+    </set>
+    WHERE id = #{id}
+  </update>
+</mapper>

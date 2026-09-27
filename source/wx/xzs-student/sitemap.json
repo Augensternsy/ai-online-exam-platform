@@ -1,0 +1,7 @@
+{
+  "desc": "AI 智能在线考试平台小程序",
+  "rules": [{
+  "action": "allow",
+  "page": "*"
+  }]
+}

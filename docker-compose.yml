@@ -1,0 +1,84 @@
+# ===================================================================
+# AI 智能在线考试平台 - Docker Compose 编排
+# 服务：MySQL 8.0 + Spring Boot 后端 + Vue/Nginx 前端
+# 启动：docker compose up -d
+# ===================================================================
+
+services:
+  # ---------------- MySQL 数据库 ----------------
+  db:
+    image: mysql:8.0
+    container_name: xzs-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ems}
+      MYSQL_USER: ${MYSQL_USER:-xzs}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: ${TZ:-Asia/Shanghai}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # 仅数据卷首次创建时执行（自动建表 + Demo 数据）
+      - ./EMS.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${MYSQL_USER:-xzs}", "-p${MYSQL_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - xzs-network
+
+  # ---------------- Spring Boot 后端 ----------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: xzs-backend
+    restart: always
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: ${DATABASE_URL:-jdbc:mysql://db:3306/${MYSQL_DATABASE:-ems}?useSSL=false&useUnicode=true&serverTimezone=Asia/Shanghai&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&allowPublicKeyRetrieval=true&allowMultiQueries=true}
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-xzs}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: ${TZ:-Asia/Shanghai}
+      # AI 出题（留空时真实 AI 不可用，页面 Demo 示例不受影响）
+      AI_QUESTION_API_KEY: ${DEEPSEEK_API_KEY:-}
+      AI_QUESTION_API_URL: ${AI_API_URL:-https://api.deepseek.com/v1/chat/completions}
+      AI_QUESTION_MODEL: ${AI_MODEL:-deepseek-chat}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - backend_logs:/app/log
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - xzs-network
+
+  # ---------------- Vue + Nginx 前端 ----------------
+  frontend:
+    build:
+      context: ./source/vue
+      dockerfile: Dockerfile
+    container_name: xzs-frontend
+    restart: always
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      - backend
+    networks:
+      - xzs-network
+
+volumes:
+  mysql_data:
+  backend_logs:
+
+networks:
+  xzs-network:
+    driver: bridge

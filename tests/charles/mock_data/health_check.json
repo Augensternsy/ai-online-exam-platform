@@ -1,0 +1,15 @@
+{
+  "code": 1,
+  "msg": "success",
+  "data": {
+    "status": "healthy",
+    "timestamp": 1714032000000,
+    "environment": "test",
+    "version": "1.0.0",
+    "services": {
+      "database": "connected",
+      "cache": "connected",
+      "ai": "connected"
+    }
+  }
+}

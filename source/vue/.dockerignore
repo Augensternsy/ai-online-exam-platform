@@ -1,0 +1,7 @@
+# 前端构建上下文忽略项
+xzs-admin/node_modules
+xzs-student/node_modules
+xzs-admin/admin
+xzs-student/student
+xzs-student/tracking
+*.log

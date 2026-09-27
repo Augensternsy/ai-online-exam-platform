@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: xzs-backend-service
+  namespace: xzs-exam
+  labels:
+    app: xzs-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: xzs-backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP

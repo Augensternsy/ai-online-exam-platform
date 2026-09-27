@@ -1,0 +1,36 @@
+# 防作弊自动化测试配置
+
+# 测试环境配置
+test_env:
+  base_url: "http://localhost:8080"
+  student_username: "test_student"
+  student_password: "123456"
+  exam_start_url: "/#/exam/start"
+
+# 浏览器配置
+browser:
+  headless: false
+  window_size: [1920, 1080]
+  implicit_wait: 10
+  page_load_timeout: 30
+
+# 防作弊检测配置
+anti_cheat:
+  warning_timeout: 15
+  switch_screen_threshold: 3
+  face_detection_interval: 5
+  network_check_interval: 10
+
+# 测试数据配置
+test_data:
+  video_dir: "test_data/videos"
+  videos:
+    no_face: "no_face.y4m"
+    multiple_faces: "multiple_faces.y4m"
+    single_face: "single_face.y4m"
+
+# 报告配置
+report:
+  output_dir: "reports"
+  html_report: "test_report.html"
+  allure_results: "allure-results"

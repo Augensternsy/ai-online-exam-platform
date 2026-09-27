@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mindskip.xzs.repository.QuestionRecommendMapper">
+
+    <!-- 获取题目详情（含题干内容） -->
+    <select id="getQuestionWithContent" resultType="java.util.Map">
+        SELECT 
+            q.id AS questionId,
+            q.subject_id AS subjectId,
+            q.difficult AS difficulty,
+            tc.content AS questionContent
+        FROM t_question q
+        LEFT JOIN t_text_content tc ON q.info_text_content_id = tc.id
+        WHERE q.id = #{questionId} AND q.deleted = 0
+    </select>
+
+    <!-- 获取同一科目的候选题目（排除当前题目） -->
+    <select id="getCandidateQuestions" resultType="java.util.Map">
+        SELECT 
+            q.id AS questionId,
+            q.subject_id AS subjectId,
+            q.difficult AS difficulty,
+            tc.content AS questionContent
+        FROM t_question q
+        LEFT JOIN t_text_content tc ON q.info_text_content_id = tc.id
+        WHERE q.subject_id = #{subjectId} 
+            AND q.id != #{excludeQuestionId}
+            AND q.deleted = 0
+        LIMIT 300
+    </select>
+
+    <!-- 获取学生错题列表（包含题目难度） -->
+    <select id="getStudentWrongQuestions" resultType="java.util.Map">
+        SELECT 
+            eqca.question_id AS questionId,
+            eqca.subject_id AS subjectId,
+            q.difficult AS difficulty,
+            tc.content AS questionContent
+        FROM t_exam_paper_question_customer_answer eqca
+        LEFT JOIN t_question q ON eqca.question_id = q.id
+        LEFT JOIN t_text_content tc ON q.info_text_content_id = tc.id
+        WHERE eqca.create_user = #{studentId} 
+            AND eqca.do_right = FALSE
+            AND q.deleted = 0
+        ORDER BY eqca.create_time DESC
+        LIMIT 20
+    </select>
+
+    <!-- 获取学生已答题列表 -->
+    <select id="getStudentAnsweredQuestionIds" resultType="java.lang.Integer">
+        SELECT DISTINCT eqca.question_id
+        FROM t_exam_paper_question_customer_answer eqca
+        WHERE eqca.create_user = #{studentId}
+    </select>
+
+    <!-- 获取科目下所有题目 -->
+    <select id="getQuestionsBySubject" resultType="java.util.Map">
+        SELECT 
+            q.id AS questionId,
+            q.subject_id AS subjectId,
+            q.difficult AS difficulty,
+            tc.content AS questionContent
+        FROM t_question q
+        LEFT JOIN t_text_content tc ON q.info_text_content_id = tc.id
+        WHERE q.subject_id = #{subjectId} AND q.deleted = 0
+        LIMIT 300
+    </select>
+
+    <!-- 获取最近创建的题目（用于默认推荐） -->
+    <select id="getRecentQuestions" resultType="java.util.Map">
+        SELECT 
+            q.id AS questionId,
+            q.subject_id AS subjectId,
+            q.difficult AS difficulty,
+            tc.content AS questionContent
+        FROM t_question q
+        LEFT JOIN t_text_content tc ON q.info_text_content_id = tc.id
+        WHERE q.deleted = 0
+        ORDER BY q.id DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

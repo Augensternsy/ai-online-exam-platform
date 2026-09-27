@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: xzs-backend
+  namespace: xzs-exam
+  labels:
+    app: xzs-backend
+    version: v1
+spec:
+  # 3 个副本应对高并发考试场景
+  replicas: 3
+  selector:
+    matchLabels:
+      app: xzs-backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: xzs-backend
+        version: v1
+    spec:
+      containers:
+        - name: backend
+          image: xzs-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: xzs-backend-config
+          # 资源限制（最佳实践）
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1024Mi"
+          # 健康检查
+          livenessProbe:
+            httpGet:
+              path: /api/student/dashboard/index
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/student/dashboard/index
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # 日志挂载
+          volumeMounts:
+            - name: log-volume
+              mountPath: /app/log
+      volumes:
+        - name: log-volume
+          emptyDir: {}
+      # 优雅关闭
+      terminationGracePeriodSeconds: 30

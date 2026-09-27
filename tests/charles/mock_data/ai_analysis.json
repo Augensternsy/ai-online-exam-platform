@@ -1,0 +1,26 @@
+{
+  "code": 1,
+  "msg": "success",
+  "data": {
+    "analysis": {
+      "violationDetected": true,
+      "violationType": "looking_around",
+      "confidence": 0.95,
+      "timestamp": 1714032000000,
+      "details": {
+        "faceCoords": {
+          "x": 150,
+          "y": 200
+        },
+        "gazeDirection": "left",
+        "headPose": {
+          "yaw": -30,
+          "pitch": 5,
+          "roll": 2
+        },
+        "duration": 3000
+      },
+      "recommendation": "警告：检测到考生左顾右盼行为，持续 3 秒"
+    }
+  }
+}
