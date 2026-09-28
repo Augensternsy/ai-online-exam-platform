@@ -194,7 +194,7 @@ function writeShowcaseIndex () {
     </div>
   </section>
 
-  <footer>AI 智能在线考试平台 &copy; 2026 · Powered by Spring Boot + Vue + DeepSeek</footer>
+  <footer>AI 智能在线考试平台 &copy; 2026 · Powered by Spring Boot + Vue + DeepSeek · <a href="https://augensternsy.github.io/" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: none;">开发者主页</a></footer>
 </body>
 </html>`
 
