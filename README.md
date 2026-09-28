@@ -198,7 +198,13 @@ npm install && npm run serve    # 学生端 http://localhost:8001
 
 ## Online Demo
 
-**Demo URL：** https://ai-exam-platform.vercel.app/
+| 入口 | URL |
+| ---- | ---- |
+| Showcase 首页 | https://vue-augensternsys-projects.vercel.app/ |
+| 管理端 Admin | https://vue-augensternsys-projects.vercel.app/admin/ |
+| 学生端 Student | https://vue-augensternsys-projects.vercel.app/student/ |
+
+**Demo 账号：**
 
 | 角色 | 账号 | 密码 |
 | ---- | ---- | ---- |
@@ -207,7 +213,7 @@ npm install && npm run serve    # 学生端 http://localhost:8001
 
 > 在线版本使用 **Showcase Demo Mode**，数据为前端内置 Mock，无需连接真实后端即可体验完整流程。
 >
-> 完整源码支持：Spring Boot、MySQL、DeepSeek、Selenium、JMeter、Docker、Kubernetes。
+> 完整源码支持实时服务：Spring Boot、MySQL、DeepSeek、Selenium、JMeter、Docker、Kubernetes。
 
 ## Demo 使用说明
 
