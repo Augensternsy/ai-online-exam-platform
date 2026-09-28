@@ -48,7 +48,7 @@
 
     <el-card class="box-card" style="margin-top: 20px;">
       <div slot="header" class="clearfix">
-        <span>PDF 教材出题（高级）</span>
+        <span>PDF 教材出题</span>
       </div>
 
       <el-form :model="form" label-width="120px">
@@ -129,6 +129,9 @@
             加载 Demo 示例（无需 PDF）
           </el-button>
           <el-button @click="resetForm">重置</el-button>
+          <div v-if="generating && generatingText" class="generating-status">
+            <i class="el-icon-loading"></i> {{ generatingText }}
+          </div>
         </el-form-item>
       </el-form>
     </el-card>
@@ -212,6 +215,34 @@
           </el-table>
         </el-tab-pane>
 
+        <el-tab-pane v-if="result.evaluationFailedCount > 0" :label="`待评估/评估失败 (${result.evaluationFailedCount})`" name="evalFailed">
+          <el-alert
+            title="以下题目因 API 限流等原因未能完成质量评估，已保留生成结果。可选择重新生成，或一并保存到题库后人工复核。"
+            type="info"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 15px;"
+          ></el-alert>
+          <el-table :data="result.evaluationFailedQuestions" style="width: 100%" border>
+            <el-table-column type="index" label="序号" width="60"></el-table-column>
+            <el-table-column prop="question" label="题目" min-width="200"></el-table-column>
+            <el-table-column label="选项" min-width="200">
+              <template slot-scope="scope">
+                <div v-for="(option, index) in scope.row.options" :key="index">
+                  {{ option }}
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="correct_answer" label="正确答案" width="100"></el-table-column>
+            <el-table-column label="质量评分" width="100">
+              <template slot-scope="scope">
+                <el-tag type="info">待评估</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="analysis" label="解析" min-width="200"></el-table-column>
+          </el-table>
+        </el-tab-pane>
+
         <el-tab-pane label="Markdown 内容" name="markdown">
           <pre class="markdown-content">{{ result.markdownContent }}</pre>
         </el-tab-pane>
@@ -222,7 +253,7 @@
 
 <script>
 import subjectApi from '@/api/subject'
-import { post } from '@/utils/request'
+import { post, get } from '@/utils/request'
 import DEMO_MODE from '@/mock'
 import { mockAdminApi } from '@/mock/mock-api'
 import { buildDemoResult, DEMO_INPUT } from './demo-data'
@@ -243,6 +274,8 @@ export default {
       subjects: [],
       file: null,
       generating: false,
+      generatingText: '',
+      progressTimer: null,
       saving: false,
       result: null,
       activeTab: 'qualified',
@@ -260,6 +293,9 @@ export default {
   },
   created() {
     this.fetchSubjects()
+  },
+  beforeDestroy() {
+    this.stopProgressPolling()
   },
   methods: {
     formatStepDetail(step) {
@@ -331,14 +367,20 @@ export default {
       }
 
       this.generating = true
+      this.generatingText = '正在上传 PDF 并解析...'
+      const taskId = 't' + Date.now() + Math.floor(Math.random() * 1000)
+
       const formData = new FormData()
       formData.append('file', this.file)
+      formData.append('taskId', taskId)
       if (this.form.subjectId) formData.append('subjectId', this.form.subjectId)
       if (this.form.gradeLevel) formData.append('gradeLevel', this.form.gradeLevel)
       formData.append('questionType', this.form.questionType)
       formData.append('questionCount', this.form.questionCount)
       formData.append('difficulty', this.form.difficulty)
       formData.append('enableQualityCheck', this.form.enableQualityCheck)
+
+      this.startProgressPolling(taskId)
 
       const query = {
         baseURL: process.env.VUE_APP_URL,
@@ -353,17 +395,49 @@ export default {
       this.$http.request(query).then(response => {
         this.result = response.data.response
         this.demoMode = false
-        this.generating = false
+        this.activeTab = 'qualified'
         this.$message.success('题目生成完成')
       }).catch(error => {
-        this.generating = false
         const errorMsg = (error && error.message) ? error.message : (typeof error === 'string' ? error : '未知错误')
         this.$message.error('题目生成失败：' + errorMsg)
+      }).finally(() => {
+        this.stopProgressPolling()
+        this.generating = false
+        this.generatingText = ''
       })
     },
+    startProgressPolling(taskId) {
+      this.stopProgressPolling()
+      this.progressTimer = setInterval(() => {
+        get('/api/admin/ai-question/progress', { taskId: taskId }).then(res => {
+          const p = res.response || {}
+          const stageText = {
+            parsing: '正在解析 PDF 教材内容...',
+            generating: '正在生成题目...',
+            evaluating: `正在进行质量评估（${p.evaluated || 0}/${p.total || 0}）...`,
+            done: '生成完成，正在返回结果...',
+            failed: '生成失败'
+          }
+          let text = stageText[p.stage] || '生成中...'
+          if (p.rateLimited && (p.stage === 'evaluating' || p.stage === 'generating')) {
+            text = 'API 限流，正在等待重试...'
+          }
+          this.generatingText = text
+        }).catch(() => {})
+      }, 2000)
+    },
+    stopProgressPolling() {
+      if (this.progressTimer) {
+        clearInterval(this.progressTimer)
+        this.progressTimer = null
+      }
+    },
     saveQualifiedQuestions() {
-      if (!this.result || !this.result.qualifiedQuestions || this.result.qualifiedQuestions.length === 0) {
-        this.$message.warning('没有可保存的合格题目')
+      if (!this.result) return
+      const pendingQuestions = this.result.evaluationFailedQuestions || []
+      const saveList = (this.result.qualifiedQuestions || []).concat(pendingQuestions)
+      if (saveList.length === 0) {
+        this.$message.warning('没有可保存的题目')
         return
       }
 
@@ -372,14 +446,15 @@ export default {
         return
       }
 
-      this.$confirm(`确定要保存 ${this.result.qualifiedCount} 道合格题目到题库吗？`, '提示', {
+      const pendingTip = pendingQuestions.length > 0 ? ` 和 ${pendingQuestions.length} 道待评估题目` : ''
+      this.$confirm(`确定要保存 ${this.result.qualifiedCount} 道合格题目${pendingTip}到题库吗？`, '提示', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
       }).then(() => {
         this.saving = true
         const requestData = {
-          questions: this.result.qualifiedQuestions,
+          questions: saveList,
           subjectId: this.form.subjectId,
           gradeLevel: this.form.gradeLevel,
           // Demo 为混合题型：全局类型传 null，由后端读取每题自带的 questionType
@@ -426,6 +501,12 @@ export default {
 <style scoped>
 .ai-question-container {
   padding: 20px;
+}
+
+.generating-status {
+  margin-top: 10px;
+  color: #409eff;
+  font-size: 13px;
 }
 
 .markdown-content {

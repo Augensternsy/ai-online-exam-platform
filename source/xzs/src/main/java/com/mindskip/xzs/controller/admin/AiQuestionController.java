@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -34,7 +35,8 @@ public class AiQuestionController extends BaseApiController {
             @RequestParam(value = "questionType", required = false) Integer questionType,
             @RequestParam(value = "questionCount", required = false) Integer questionCount,
             @RequestParam(value = "difficulty", required = false) Integer difficulty,
-            @RequestParam(value = "enableQualityCheck", required = false, defaultValue = "true") Boolean enableQualityCheck) {
+            @RequestParam(value = "enableQualityCheck", required = false, defaultValue = "true") Boolean enableQualityCheck,
+            @RequestParam(value = "taskId", required = false) String taskId) {
 
         try {
             logger.info("Received AI question generation request: file={}, subjectId={}, questionType={}, questionCount={}, enableQualityCheck={}",
@@ -50,7 +52,7 @@ public class AiQuestionController extends BaseApiController {
             }
 
             Map<String, Object> result = aiQuestionGenerationService.generateQuestionsFromPdf(
-                    file, subjectId, gradeLevel, questionType, questionCount, difficulty, enableQualityCheck);
+                    file, subjectId, gradeLevel, questionType, questionCount, difficulty, enableQualityCheck, taskId);
 
             return RestResponse.ok(result);
 
@@ -58,6 +60,18 @@ public class AiQuestionController extends BaseApiController {
             logger.error("AI question generation failed", e);
             return RestResponse.fail("题目生成失败：" + e.getMessage());
         }
+    }
+
+    /** 查询生成任务进度（前端轮询，用于展示评估进度与限流重试状态） */
+    @RequestMapping(value = "/progress", method = RequestMethod.GET)
+    public RestResponse<Map<String, Object>> progress(@RequestParam("taskId") String taskId) {
+        Map<String, Object> progress = aiQuestionGenerationService.getProgress(taskId);
+        if (progress == null) {
+            Map<String, Object> unknown = new HashMap<>();
+            unknown.put("stage", "unknown");
+            return RestResponse.ok(unknown);
+        }
+        return RestResponse.ok(progress);
     }
 
     @RequestMapping(value = "/save", method = RequestMethod.POST)

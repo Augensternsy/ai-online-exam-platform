@@ -33,38 +33,66 @@ public class DeepSeekApiClient {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /** 限流退避截止时间戳，用于前端进度展示（volatile 保证跨线程可见） */
+    private volatile long rateLimitBackoffUntil = 0L;
+
+    /** 当前是否处于 429 退避等待中 */
+    public boolean isRateLimited() {
+        return System.currentTimeMillis() < rateLimitBackoffUntil;
+    }
+
+    /** 429 专用异常，携带服务端 Retry-After 提示（毫秒，0 表示未提供） */
+    public static class RateLimitException extends IOException {
+        private final long retryAfterMs;
+
+        public RateLimitException(String message, long retryAfterMs) {
+            super(message);
+            this.retryAfterMs = retryAfterMs;
+        }
+
+        public long getRetryAfterMs() {
+            return retryAfterMs;
+        }
+    }
+
     public String callChatCompletion(String prompt) throws IOException {
         return callChatCompletionWithRetry(prompt, 3);
     }
 
     private String callChatCompletionWithRetry(String prompt, int maxRetries) throws IOException {
-        int retryCount = 0;
+        // 429 指数退避：2s -> 5s -> 10s；若响应携带 Retry-After 则优先遵循（上限 30s）
+        long[] backoffMs = {2000L, 5000L, 10000L};
         IOException lastException = null;
 
-        while (retryCount <= maxRetries) {
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
             try {
                 return executeApiCall(prompt);
-            } catch (IOException e) {
+            } catch (RateLimitException e) {
                 lastException = e;
-                if (e.getMessage() != null && e.getMessage().contains("429")) {
-                    retryCount++;
-                    if (retryCount <= maxRetries) {
-                        long waitTime = (long) Math.pow(2, retryCount) * 1000;
-                        logger.warn("Rate limit exceeded, retrying in {}ms (attempt {}/{})", waitTime, retryCount, maxRetries);
-                        try {
-                            Thread.sleep(waitTime);
-                        } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                            throw new IOException("Retry interrupted", ie);
-                        }
-                    }
-                } else {
-                    throw e;
+                if (attempt >= maxRetries) {
+                    break;
                 }
+                long wait = e.getRetryAfterMs() > 0
+                        ? Math.min(e.getRetryAfterMs(), 30000L)
+                        : backoffMs[Math.min(attempt, backoffMs.length - 1)];
+                rateLimitBackoffUntil = System.currentTimeMillis() + wait;
+                logger.warn("Rate limit (429), retrying in {}ms (retry {}/{})", wait, attempt + 1, maxRetries);
+                sleepQuietly(wait);
+            } catch (IOException e) {
+                throw e;
             }
         }
 
         throw lastException;
+    }
+
+    private void sleepQuietly(long millis) throws IOException {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Retry interrupted", ie);
+        }
     }
 
     private String executeApiCall(String prompt) throws IOException {
@@ -107,6 +135,12 @@ public class DeepSeekApiClient {
             int statusCode = response.getStatusLine().getStatusCode();
             String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
 
+            if (statusCode == 429) {
+                long retryAfterMs = parseRetryAfterMs(response.getFirstHeader("Retry-After"));
+                logger.error("DeepSeek API rate limited: 429, retryAfter={}, body={}", retryAfterMs, responseBody);
+                throw new RateLimitException("DeepSeek API rate limited: 429 - " + responseBody, retryAfterMs);
+            }
+
             if (statusCode != 200) {
                 logger.error("DeepSeek API error: status={}, body={}", statusCode, responseBody);
                 throw new IOException("DeepSeek API returned error: " + statusCode + " - " + responseBody);
@@ -122,6 +156,18 @@ public class DeepSeekApiClient {
             }
 
             throw new IOException("Invalid response format from DeepSeek API");
+        }
+    }
+
+    /** 解析 Retry-After 头（秒或 HTTP 日期），无法解析返回 0 */
+    private long parseRetryAfterMs(org.apache.http.Header header) {
+        if (header == null) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(header.getValue().trim()) * 1000L;
+        } catch (NumberFormatException ignored) {
+            return 0L;
         }
     }
 }

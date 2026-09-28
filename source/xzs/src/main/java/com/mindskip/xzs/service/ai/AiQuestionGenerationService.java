@@ -27,9 +27,11 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 @Service
@@ -60,7 +62,38 @@ public class AiQuestionGenerationService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final JsonSchema questionSchema;
-    private final ExecutorService executorService = Executors.newFixedThreadPool(5);
+    // 质量评估并发数限制为 2，避免触发 API RPM 限流
+    private final ExecutorService executorService = Executors.newFixedThreadPool(2);
+
+    /** 生成任务进度表：taskId -> {stage, evaluated, total, message, updatedAt} */
+    private final ConcurrentHashMap<String, Map<String, Object>> progressMap = new ConcurrentHashMap<>();
+
+    /** 查询任务进度（附加实时限流状态），任务不存在返回 null */
+    public Map<String, Object> getProgress(String taskId) {
+        if (taskId == null || taskId.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> progress = progressMap.get(taskId);
+        if (progress == null) {
+            return null;
+        }
+        Map<String, Object> copy = new HashMap<>(progress);
+        copy.put("rateLimited", deepSeekApiClient.isRateLimited());
+        return copy;
+    }
+
+    private void updateProgress(String taskId, String stage, int evaluated, int total, String message) {
+        if (taskId == null || taskId.isEmpty()) {
+            return;
+        }
+        Map<String, Object> progress = new HashMap<>();
+        progress.put("stage", stage);
+        progress.put("evaluated", evaluated);
+        progress.put("total", total);
+        progress.put("message", message);
+        progress.put("updatedAt", System.currentTimeMillis());
+        progressMap.put(taskId, progress);
+    }
 
     public AiQuestionGenerationService() throws ProcessingException, IOException {
         String schemaJson = "{\n" +
@@ -96,26 +129,33 @@ public class AiQuestionGenerationService {
 
     public Map<String, Object> generateQuestionsFromPdf(MultipartFile pdfFile, Integer subjectId, Integer gradeLevel,
                                                          Integer questionType, Integer questionCount, Integer difficulty,
-                                                         Boolean enableQualityCheck) throws Exception {
+                                                         Boolean enableQualityCheck, String taskId) throws Exception {
         logger.info("Starting AI question generation from PDF, qualityCheck={}", enableQualityCheck);
 
         long startTime = System.currentTimeMillis();
         Map<String, Object> result = new HashMap<>();
 
         try {
+            updateProgress(taskId, "parsing", 0, 0, "正在解析 PDF 教材内容...");
             String markdownContent = convertPdfToMarkdown(pdfFile);
             result.put("markdownContent", markdownContent);
 
+            updateProgress(taskId, "generating", 0, 0, "正在生成题目...");
             List<Map<String, Object>> generatedQuestions = generateQuestionsWithRetry(
                     markdownContent, questionType, questionCount, difficulty, gradeLevel, subjectId);
 
             List<Map<String, Object>> qualifiedQuestions = new ArrayList<>();
             List<Map<String, Object>> rejectedQuestions = new ArrayList<>();
+            List<Map<String, Object>> evaluationFailedQuestions = new ArrayList<>();
 
             if (enableQualityCheck != null && enableQualityCheck) {
-                logger.info("Starting parallel quality evaluation for {} questions", generatedQuestions.size());
+                int total = generatedQuestions.size();
+                AtomicInteger evaluatedCount = new AtomicInteger(0);
+                logger.info("Starting quality evaluation for {} questions (concurrency=2)", total);
                 long evalStartTime = System.currentTimeMillis();
+                updateProgress(taskId, "evaluating", 0, total, "正在进行质量评估（0/" + total + "）...");
 
+                final String fTaskId = taskId;
                 List<CompletableFuture<Map<String, Object>>> futures = generatedQuestions.stream()
                         .map(question -> CompletableFuture.supplyAsync(() -> {
                             try {
@@ -127,9 +167,13 @@ public class AiQuestionGenerationService {
                                     question.put("status", "rejected");
                                 }
                             } catch (Exception e) {
-                                logger.error("Failed to evaluate question quality", e);
-                                question.put("qualityScore", 3.0);
-                                question.put("status", "rejected");
+                                // 评估调用失败（如 429 重试耗尽）：保留题目并标记待评估，不计入 rejected
+                                logger.error("Quality evaluation failed, marking as eval_failed: {}", e.getMessage());
+                                question.put("status", "eval_failed");
+                            } finally {
+                                int evaluated = evaluatedCount.incrementAndGet();
+                                updateProgress(fTaskId, "evaluating", evaluated, total,
+                                        "正在进行质量评估（" + evaluated + "/" + total + "）...");
                             }
                             return question;
                         }, executorService))
@@ -141,6 +185,8 @@ public class AiQuestionGenerationService {
                     Map<String, Object> question = future.get();
                     if ("qualified".equals(question.get("status"))) {
                         qualifiedQuestions.add(question);
+                    } else if ("eval_failed".equals(question.get("status"))) {
+                        evaluationFailedQuestions.add(question);
                     } else {
                         rejectedQuestions.add(question);
                     }
@@ -159,17 +205,23 @@ public class AiQuestionGenerationService {
 
             result.put("qualifiedQuestions", qualifiedQuestions);
             result.put("rejectedQuestions", rejectedQuestions);
+            result.put("evaluationFailedQuestions", evaluationFailedQuestions);
             result.put("totalCount", generatedQuestions.size());
             result.put("qualifiedCount", qualifiedQuestions.size());
             result.put("rejectedCount", rejectedQuestions.size());
+            result.put("evaluationFailedCount", evaluationFailedQuestions.size());
             result.put("processingTime", System.currentTimeMillis() - startTime);
 
-            logger.info("Question generation completed: total={}, qualified={}, rejected={}, time={}ms",
+            updateProgress(taskId, "done", evaluationFailedQuestions.size() + qualifiedQuestions.size() + rejectedQuestions.size(),
+                    generatedQuestions.size(), "生成完成");
+
+            logger.info("Question generation completed: total={}, qualified={}, rejected={}, evaluationFailed={}, time={}ms",
                     generatedQuestions.size(), qualifiedQuestions.size(), rejectedQuestions.size(),
-                    System.currentTimeMillis() - startTime);
+                    evaluationFailedQuestions.size(), System.currentTimeMillis() - startTime);
 
         } catch (Exception e) {
             logger.error("Question generation failed", e);
+            updateProgress(taskId, "failed", 0, 0, "生成失败：" + e.getMessage());
             result.put("error", e.getMessage());
             throw e;
         }
@@ -194,7 +246,8 @@ public class AiQuestionGenerationService {
                 question.setSubjectId(subjectId);
                 question.setGradeLevel(gradeLevel);
                 question.setDifficult((Integer) questionData.getOrDefault("difficulty", 2));
-                question.setScore(1000);
+                // 默认每题 10 分（内部单位 100），判分以题库分为准，避免 1000（=100分/题）导致得分超过试卷满分
+                question.setScore(100);
                 question.setCreateUser(createUser);
                 question.setStatus(1);
                 question.setDeleted(false);
@@ -216,7 +269,7 @@ public class AiQuestionGenerationService {
                             QuestionItemObject item = new QuestionItemObject();
                             item.setPrefix(String.valueOf((char) ('A' + i)));
                             item.setContent(options.get(i));
-                            item.setScore(1000);
+                            item.setScore(100);
                             itemObjects.add(item);
                         }
                         questionObject.setQuestionItemObjects(itemObjects);
@@ -452,33 +505,28 @@ public class AiQuestionGenerationService {
         return questions;
     }
 
-    private double evaluateQuestionQuality(String originalContent, Map<String, Object> question) {
-        try {
-            String judgePrompt = promptTemplateBuilder.buildJudgePrompt(
-                    originalContent,
-                    (String) question.get("question"),
-                    ((List<String>) question.get("options")).toArray(new String[0]),
-                    (String) question.get("correct_answer"),
-                    (String) question.get("analysis"));
+    /** 质量评估；调用失败（含 429 重试耗尽）时抛出异常，由调用方标记为 eval_failed，避免误判为质量不合格 */
+    private double evaluateQuestionQuality(String originalContent, Map<String, Object> question) throws Exception {
+        String judgePrompt = promptTemplateBuilder.buildJudgePrompt(
+                originalContent,
+                (String) question.get("question"),
+                ((List<String>) question.get("options")).toArray(new String[0]),
+                (String) question.get("correct_answer"),
+                (String) question.get("analysis"));
 
-            String response = deepSeekApiClient.callChatCompletion(judgePrompt);
-            String jsonContent = extractJsonFromResponse(response);
+        String response = deepSeekApiClient.callChatCompletion(judgePrompt);
+        String jsonContent = extractJsonFromResponse(response);
 
-            JsonNode jsonNode = objectMapper.readTree(jsonContent);
-            if (jsonNode.has("overall_score")) {
-                return jsonNode.get("overall_score").asDouble();
-            }
-
-            double factuality = jsonNode.has("factuality_score") ? jsonNode.get("factuality_score").asDouble() : 3.0;
-            double relevance = jsonNode.has("relevance_score") ? jsonNode.get("relevance_score").asDouble() : 3.0;
-            double difficulty = jsonNode.has("difficulty_alignment_score") ? jsonNode.get("difficulty_alignment_score").asDouble() : 3.0;
-
-            return (factuality + relevance + difficulty) / 3.0;
-
-        } catch (Exception e) {
-            logger.error("Question quality evaluation failed", e);
-            return 3.0;
+        JsonNode jsonNode = objectMapper.readTree(jsonContent);
+        if (jsonNode.has("overall_score")) {
+            return jsonNode.get("overall_score").asDouble();
         }
+
+        double factuality = jsonNode.has("factuality_score") ? jsonNode.get("factuality_score").asDouble() : 3.0;
+        double relevance = jsonNode.has("relevance_score") ? jsonNode.get("relevance_score").asDouble() : 3.0;
+        double difficulty = jsonNode.has("difficulty_alignment_score") ? jsonNode.get("difficulty_alignment_score").asDouble() : 3.0;
+
+        return (factuality + relevance + difficulty) / 3.0;
     }
 
     private String extractJsonFromResponse(String response) {
