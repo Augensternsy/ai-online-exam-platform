@@ -43,6 +43,7 @@
 import { mapActions, mapMutations, mapState } from 'vuex'
 import loginApi from '@/api/login'
 import userApi from '@/api/user'
+const DEMO_MODE = process.env.VUE_APP_DEMO_MODE === 'true'
 export default {
   name: 'Layout',
   data () {
@@ -56,7 +57,10 @@ export default {
   created () {
     let _this = this
     this.defaultUrl = this.routeSelect(this.$route.path)
-    this.getUserMessageInfo()
+    // Demo 模式下未读数为默认 0，跳过真实接口请求
+    if (!DEMO_MODE) {
+      this.getUserMessageInfo()
+    }
     userApi.getCurrentUser().then(re => {
       _this.userInfo = re.response
     })

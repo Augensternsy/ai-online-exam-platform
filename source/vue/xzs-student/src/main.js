@@ -34,8 +34,8 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (to.path) {
-    // eslint-disable-next-line no-undef
-    _hmt.push(['_trackPageview', '/#' + to.fullPath])
+    // 百度统计未加载时安全跳过
+    window._hmt && window._hmt.push(['_trackPageview', '/#' + to.fullPath])
   }
   next()
 })
