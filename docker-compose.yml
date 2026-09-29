@@ -51,6 +51,9 @@ services:
       AI_QUESTION_API_KEY: ${DEEPSEEK_API_KEY:-}
       AI_QUESTION_API_URL: ${AI_API_URL:-https://api.deepseek.com/v1/chat/completions}
       AI_QUESTION_MODEL: ${AI_MODEL:-deepseek-chat}
+      # Spring AI 微服务地址（ai.provider=spring-ai 时启用）
+      AI_SERVICE_BASE_URL: ${AI_SERVICE_BASE_URL:-http://ai-service:8081}
+      AI_PROVIDER: ${AI_PROVIDER:-legacy}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
@@ -58,6 +61,24 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - xzs-network
+
+  # ---------------- Spring AI 微服务 ----------------
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: xzs-ai-service
+    restart: always
+    environment:
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      AI_QUALITY_THRESHOLD: ${AI_QUALITY_THRESHOLD:-4.0}
+      AI_EVALUATION_CONCURRENCY: ${AI_EVALUATION_CONCURRENCY:-2}
+    ports:
+      - "${AI_SERVICE_PORT:-8081}:8081"
     networks:
       - xzs-network
 

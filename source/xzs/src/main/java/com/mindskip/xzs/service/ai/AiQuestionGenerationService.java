@@ -45,6 +45,12 @@ public class AiQuestionGenerationService {
     @Autowired
     private DeepSeekApiClient deepSeekApiClient;
 
+    @Autowired(required = false)
+    private SpringAiServiceClient springAiServiceClient;
+
+    @org.springframework.beans.factory.annotation.Value("${ai.provider:legacy}")
+    private String aiProvider;
+
     @Autowired
     private PromptTemplateBuilder promptTemplateBuilder;
 
@@ -78,7 +84,9 @@ public class AiQuestionGenerationService {
             return null;
         }
         Map<String, Object> copy = new HashMap<>(progress);
-        copy.put("rateLimited", deepSeekApiClient.isRateLimited());
+        copy.put("rateLimited", "spring-ai".equalsIgnoreCase(aiProvider) && springAiServiceClient != null
+                ? springAiServiceClient.isRateLimited()
+                : deepSeekApiClient.isRateLimited());
         return copy;
     }
 
@@ -130,7 +138,13 @@ public class AiQuestionGenerationService {
     public Map<String, Object> generateQuestionsFromPdf(MultipartFile pdfFile, Integer subjectId, Integer gradeLevel,
                                                          Integer questionType, Integer questionCount, Integer difficulty,
                                                          Boolean enableQualityCheck, String taskId) throws Exception {
-        logger.info("Starting AI question generation from PDF, qualityCheck={}", enableQualityCheck);
+        logger.info("Starting AI question generation from PDF, qualityCheck={}, provider={}", enableQualityCheck, aiProvider);
+
+        // 使用 Spring AI 微服务（ai.provider=spring-ai）
+        if ("spring-ai".equalsIgnoreCase(aiProvider) && springAiServiceClient != null) {
+            return generateQuestionsViaSpringAi(pdfFile, subjectId, gradeLevel, questionType, questionCount,
+                    difficulty, enableQualityCheck, taskId);
+        }
 
         long startTime = System.currentTimeMillis();
         Map<String, Object> result = new HashMap<>();
@@ -565,5 +579,94 @@ public class AiQuestionGenerationService {
         }
 
         return cleaned;
+    }
+
+    /**
+     * 通过 ai-service（Spring AI）生成题目。
+     * 与 legacy 流程保持相同返回结构，供 Vue 前端无感切换。
+     */
+    private Map<String, Object> generateQuestionsViaSpringAi(MultipartFile pdfFile, Integer subjectId,
+            Integer gradeLevel, Integer questionType, Integer questionCount, Integer difficulty,
+            Boolean enableQualityCheck, String taskId) throws Exception {
+        long startTime = System.currentTimeMillis();
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            updateProgress(taskId, "parsing", 0, 0, "正在解析 PDF 教材内容...");
+            String markdownContent = convertPdfToMarkdown(pdfFile);
+            result.put("markdownContent", markdownContent);
+
+            updateProgress(taskId, "generating", 0, 0, "正在通过 Spring AI 生成题目...");
+
+            // 映射 questionType 到 ai-service 的题型字符串
+            String questionTypeStr = mapQuestionTypeToString(questionType);
+            String difficultyStr = mapDifficultyToString(difficulty);
+            String mode = Boolean.TRUE.equals(enableQualityCheck) ? "STANDARD" : "FAST";
+
+            Map<String, Object> aiResult = springAiServiceClient.generateQuestions(
+                    null, difficultyStr, questionCount, questionTypeStr, mode, markdownContent);
+
+            // 提取 ai-service 返回的题目列表
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> questions = (List<Map<String, Object>>) aiResult.getOrDefault("qualifiedQuestions",
+                    new ArrayList<>());
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> rejected = (List<Map<String, Object>>) aiResult.getOrDefault("rejectedQuestions",
+                    new ArrayList<>());
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> evalFailed = (List<Map<String, Object>>) aiResult
+                    .getOrDefault("evaluationFailedQuestions", new ArrayList<>());
+
+            result.put("qualifiedQuestions", questions);
+            result.put("rejectedQuestions", rejected);
+            result.put("evaluationFailedQuestions", evalFailed);
+            result.put("totalCount", questions.size() + rejected.size() + evalFailed.size());
+            result.put("qualifiedCount", questions.size());
+            result.put("rejectedCount", rejected.size());
+            result.put("evaluationFailedCount", evalFailed.size());
+            result.put("processingTime", System.currentTimeMillis() - startTime);
+            result.put("title", aiResult.get("title"));
+
+            updateProgress(taskId, "done",
+                    questions.size() + rejected.size() + evalFailed.size(),
+                    questions.size() + rejected.size() + evalFailed.size(), "生成完成");
+
+            logger.info("Spring AI generation completed: total={}, qualified={}, rejected={}, evalFailed={}",
+                    questions.size() + rejected.size() + evalFailed.size(), questions.size(), rejected.size(),
+                    evalFailed.size());
+
+        } catch (Exception e) {
+            logger.error("Spring AI question generation failed", e);
+            updateProgress(taskId, "failed", 0, 0, "生成失败：" + e.getMessage());
+            result.put("error", e.getMessage());
+            throw e;
+        }
+        return result;
+    }
+
+    private String mapQuestionTypeToString(Integer questionType) {
+        if (questionType == null) {
+            return "single";
+        }
+        switch (questionType) {
+            case 1: return "single";
+            case 2: return "multiple";
+            case 3: return "judge";
+            case 4: return "gap";
+            case 5: return "short";
+            default: return "single";
+        }
+    }
+
+    private String mapDifficultyToString(Integer difficulty) {
+        if (difficulty == null) {
+            return "medium";
+        }
+        switch (difficulty) {
+            case 1: return "easy";
+            case 2: return "medium";
+            case 3: return "hard";
+            default: return "medium";
+        }
     }
 }

@@ -1,0 +1,39 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: ai-service
+  ai:
+    openai:
+      api-key: ${DEEPSEEK_API_KEY:}
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      chat:
+        options:
+          model: ${DEEPSEEK_MODEL:deepseek-chat}
+          temperature: 0.7
+          max-tokens: 16000
+
+# AI question generation tuning (mirrors main system ai.question.*)
+ai:
+  question:
+    quality-threshold: ${AI_QUALITY_THRESHOLD:4.0}
+    evaluation-concurrency: ${AI_EVALUATION_CONCURRENCY:2}
+    # 429 retry: exponential backoff 2s / 5s / 10s, honor Retry-After
+    retry-backoff-ms: 2000,5000,10000
+    max-retries: ${AI_MAX_RETRIES:3}
+    retry-after-cap-ms: 30000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.mindskip.ai: INFO
+    org.springframework.ai: INFO

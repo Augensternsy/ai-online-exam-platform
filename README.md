@@ -177,6 +177,31 @@ AI 模块：  Exam Agent  ──►  Spring AI  ──►  DeepSeek（deepseek-v
 }
 ```
 
+## Spring AI 架构
+
+```
+Vue 前端（8001/8002）
+    ↓
+Spring Boot 2.1 主系统（8000，Spring Boot 2.1.6 + JDK8）
+    ↓  ai.provider=legacy 时
+DeepSeekApiClient（Apache HttpClient，原有实现保留）
+    ↓
+DeepSeek API
+
+    ↓  ai.provider=spring-ai 时
+SpringAiServiceClient（HTTP）
+    ↓
+ai-service（8081，Spring Boot 3.2.5 + JDK17）
+    ↓
+Spring AI ChatClient（Spring AI 1.0.0-M6）
+    ↓
+DeepSeek API
+```
+
+> 旧系统仍保留自定义 DeepSeekApiClient，Spring AI 以独立服务方式接入，避免直接升级 Spring Boot 2.1 / JDK8。
+>
+> **版本兼容性说明**：由于当前版本兼容性（Spring AI 1.0.0-M6 的 BOM 中尚无 DeepSeek 专用 Starter，且 2.1.0-M1 依赖 Spring Framework 6.2，与 Boot 3.2.5 不兼容），ai-service 使用 **Spring AI OpenAI Starter**，通过 DeepSeek 的 OpenAI 兼容接口调用模型——调用链完整经过 Spring AI `ChatClient`。
+
 ## 快速开始（本地开发）
 
 ```bash
@@ -322,13 +347,17 @@ python test_ai_agent_e2e.py
 
 ## 未来优化方向
 
-1. **真正接入 Spring AI**：当前 LLM 调用基于 Apache HttpClient 封装，可迁移到 Spring AI `ChatClient` 统一接口
+1. **Spring AI 升级到 GA / DeepSeek 专用 Starter**：当前 ai-service 基于 Spring AI 1.0.0-M6 OpenAI Starter，待版本兼容后切换官方 `spring-ai-starter-model-deepseek`
 2. **Agent 记忆与多轮对话**：支持上下文连续出题（如「再加 5 道难度更高的」）
 3. **知识库增强 RAG**：上传教材/讲义后基于向量检索生成贴合知识点的题目
 4. **AI 阅卷主观题**：简答题/填空题由 LLM 语义判分，支持部分得分
 5. **流式输出**：题目逐条流式返回，前端实时渲染，降低等待感知
 6. **监控与链路追踪**：集成 Spring Boot Actuator + Prometheus + SkyWalking
 7. **CI/CD**：GitHub Actions 自动构建镜像并推送，接入 SonarQube 代码质量门禁
+
+## 推荐简历描述
+
+> 基于 Spring Boot + Vue 开发在线考试系统，基于 Spring AI 接入 DeepSeek，实现智能出题与结果校验。使用 JMeter 完成最高 1000 并发压测，并通过 EXPLAIN + 联合索引优化使 P95 降低 82.5%。
 
 ## 许可证
 

@@ -71,7 +71,11 @@ spring:
       max-request-size: 100MB
 
 # AI Question Generation Configuration
+# AI provider switch: legacy (DeepSeekApiClient) or spring-ai (ai-service microservice)
 ai:
+  provider: ${AI_PROVIDER:legacy}
+  service:
+    base-url: ${AI_SERVICE_BASE_URL:http://localhost:8081}
   question:
     # Qiniu Cloud AI Inference API (compatible with OpenAI API format)
     # 通过环境变量 AI_QUESTION_API_KEY 注入，避免硬编码敏感信息
